@@ -18,7 +18,7 @@ public class ScraperController {
 
 	@GetMapping("/website")
 	public ResponseEntity<String> scrapeWebsite(){
-		String scrapeWebsite = scraperService.scrapeWebsite();
-		return new ResponseEntity<String>(scrapeWebsite, HttpStatus.OK);
+		boolean scrapeGoogleNews = scraperService.scrapeGoogleNews();
+		return new ResponseEntity<String>(scrapeGoogleNews? "success" : "failure", HttpStatus.OK);
 	}
 }

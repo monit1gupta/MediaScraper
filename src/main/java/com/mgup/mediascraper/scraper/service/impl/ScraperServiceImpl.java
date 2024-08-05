@@ -1,16 +1,8 @@
 package com.mgup.mediascraper.scraper.service.impl;
 
-import java.io.File;
 import java.io.IOException;
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.util.HashSet;
-import java.util.Iterator;
-import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
-import org.apache.commons.io.FileUtils;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -18,23 +10,13 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.springframework.stereotype.Service;
 
-import com.drew.imaging.ImageMetadataReader;
-import com.drew.imaging.ImageProcessingException;
-import com.drew.metadata.Metadata;
-import com.drew.metadata.Tag;
-import com.drew.metadata.exif.ExifIFD0Directory;
-import com.drew.metadata.webp.WebpDirectory;
+import com.mgup.mediascraper.constants.ScraperConstants;
 import com.mgup.mediascraper.scraper.service.ScraperService;
 
 @Service
 public class ScraperServiceImpl implements ScraperService {
 
-	private final String GOOGLE_NEWS_PREFIX = "https://news.google.com";
-	// TODO: Move to application properties to change easily post deployment on
-	// server
-	private final String IMAGE_DOWNLOAD_DIRECTORY = "C:\\Users\\MONIT\\Documents\\Springing\\mediascraper\\images\\";
-
-	public String scrapeWebsite() {
+	public boolean scrapeGoogleNews() {
 
 		Document document = new Document(null);
 
@@ -57,10 +39,9 @@ public class ScraperServiceImpl implements ScraperService {
 
 			// link for world news in google news
 			Connection connection = Jsoup.connect(
-					"https://news.google.com/topics/CAAqKggKIiRDQkFTRlFvSUwyMHZNRGx1YlY4U0JXVnVMVWRDR2dKSlRpZ0FQAQ?ceid=IN:en&oc=3");
-			document = connection.userAgent(
-					"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36")
-					.get();
+					"https://news.google.com/topics/CAAqKggKIiRDQkFTRlFvSUwyMHZNRGx1YlY4U0JXVnVMVWRDR2dKSlRpZ0FQAQ?hl=en-IN&gl=IN&ceid=IN%3Aen");
+			document = connection.userAgent(ScraperConstants.USER_AGENT_CONNECTION).get();
+
 			Elements imageElements = document.getElementsByTag("img");
 			Elements anchorElements = document.getElementsByTag("a");
 
@@ -68,7 +49,7 @@ public class ScraperServiceImpl implements ScraperService {
 			for (Element element : imageElements) {
 				String src = element.attr("src");
 				if (src.startsWith("/")) {
-					String imageUrl = GOOGLE_NEWS_PREFIX + src;
+					String imageUrl = ScraperConstants.GOOGLE_NEWS_PREFIX + src;
 					imageLinkSet.add(imageUrl);
 				} else {
 					continue;
@@ -78,17 +59,16 @@ public class ScraperServiceImpl implements ScraperService {
 
 			System.out.println("images: " + imageLinkSet.size());
 
-			// TODO: Download these images
-			for (String imageUrl : imageLinkSet) {
-				String downloadedPath = downloadImage(imageUrl);
-				System.out.println("image url: " + imageUrl + " downloaded at : " + downloadedPath);
-			}
+//			for (String imageUrl : imageLinkSet) {
+//				String downloadedPath = ScraperUtils.downloadImage(imageUrl);
+//				System.out.println("image url: " + imageUrl + " downloaded at : " + downloadedPath);
+//			}
 
 			HashSet<String> linkSet = new HashSet<>();
 			for (Element linkElement : anchorElements) {
 				String link = linkElement.attr("href");
-				if (link.startsWith("./articles")) {
-					String articleUrl = GOOGLE_NEWS_PREFIX + link.substring(1);
+				if (link.startsWith("./")) {
+					String articleUrl = ScraperConstants.GOOGLE_NEWS_PREFIX + link.substring(1);
 					linkSet.add(articleUrl);
 				} else {
 					continue;
@@ -96,87 +76,46 @@ public class ScraperServiceImpl implements ScraperService {
 			}
 
 			System.out.println("articles: " + linkSet.size());
-			// TODO: go to the links and try downloading more images atleast to depth 1.
+			
+			for (String link : linkSet) {
+				scrapeWebsite(link);
+			}
 
 		} catch (IOException ex) {
 			System.out.println(ex);
 		}
 
-		return "success";
+		return true;
 	}
 
-	private String downloadImage(String imageUrl) {
+	private boolean scrapeWebsite(String websiteLink) {
+		Document document = new Document(null);
+
 		try {
-			URL url = new URL(imageUrl);
-			String fileName = extractFileNameFromUrl(imageUrl);
-			File file = new File(IMAGE_DOWNLOAD_DIRECTORY + fileName);
+			Connection connection = Jsoup.connect(websiteLink);
+			document = connection.userAgent(ScraperConstants.USER_AGENT_CONNECTION).get();
 
-			FileUtils.copyURLToFile(url, file);
-			System.out.println("Downloaded image: " + fileName);
-			String metaDataFromImage = extractMetaDataFromImage(file);
-			System.out.println("metadata from image: " + metaDataFromImage);
-
-			return file.getAbsolutePath();
-
-		} catch (MalformedURLException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		} catch (IOException e) {
-			// TODO: handle exception
-			e.printStackTrace();
-		}
-
-		return "";
-
-	}
-
-	private String extractFileNameFromUrl(String url) {
-		String regex = "attachments/([A-Za-z0-9_-]+)=-";
-		Pattern pattern = Pattern.compile(regex);
-		Matcher matcher = pattern.matcher(url);
-
-		if (matcher.find()) {
-			return matcher.group(1) + ".jpg";
-		} else {
-			return UUID.randomUUID().toString() + ".jpg";
-		}
-	}
-
-	private String extractMetaDataFromImage(File imageFile) {
-		Metadata imageMetadata = null;
-		StringBuilder metaDataInfo = new StringBuilder();
-		try {
-			imageMetadata = ImageMetadataReader.readMetadata(imageFile);
-		} catch (ImageProcessingException | IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-
-		if (imageMetadata != null) {
-			// Image Format and Dimensions
-			WebpDirectory webpDirectory = imageMetadata.getFirstDirectoryOfType(WebpDirectory.class);
-			ExifIFD0Directory exifIFD0Directory = imageMetadata.getFirstDirectoryOfType(ExifIFD0Directory.class);
-
-			if (webpDirectory != null) {
-				Iterable<Tag> tags = webpDirectory.getTags();
-
-				for (Iterator<Tag> iterator = tags.iterator(); iterator.hasNext();) {
-					Tag tag = (Tag) iterator.next();
-					metaDataInfo.append(tag.toString()).append("\n");
-
+			Elements imgElements = document.getElementsByAttribute("img");
+			
+			HashSet<String> imageLinkSet = new HashSet<>();
+			
+			for (Element element : imgElements) {
+				String imgLink = element.attr("src");
+				if (imgLink.startsWith("http")) {
+					imageLinkSet.add(imgLink);
+				} else {
+					System.out.println("Out of format source: " + imgLink);
+					continue;
 				}
-
 			}
+			
+			System.out.println(imageLinkSet.size());
 
-			if (exifIFD0Directory != null) {
-				metaDataInfo.append("Camera Make: ").append(exifIFD0Directory.getString(ExifIFD0Directory.TAG_MAKE))
-						.append("\n");
-				metaDataInfo.append("Camera Model: ").append(exifIFD0Directory.getString(ExifIFD0Directory.TAG_MODEL))
-						.append("\n");
-			}
+		} catch (IOException e) {
+			e.printStackTrace();
 		}
 
-		return metaDataInfo.toString();
+		return true;
 	}
 
 }
